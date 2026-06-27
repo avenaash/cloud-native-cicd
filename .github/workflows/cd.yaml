@@ -23,10 +23,10 @@ jobs:
         
         echo "Updating deployment.yaml..."
         # Run sed directly - if path is wrong, it will fail with clear error
-        sed -i "s|YOUR_DOCKERHUB_USERNAME/fastapi-app:latest|${{ secrets.DOCKERHUB_USERNAME }}/fastapi-app:${{ github.event.workflow_run.head_sha }}|g" ./k8s-manifests/deployment.yaml
+        sed -i "s|YOUR_DOCKERHUB_USERNAME/fastapi-app:latest|${{ secrets.DOCKERHUB_USERNAME }}/fastapi-app:${{ github.event.workflow_run.head_sha }}|g" ./k8-manifests/deployment.yaml
         
         echo "Verifying update..."
-        grep "image:" ./k8s-manifests/deployment.yaml
+        grep "image:" ./k8-manifests/deployment.yaml
         
     - name: Commit and push changes
       run: |
