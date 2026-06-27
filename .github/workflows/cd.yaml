@@ -1,0 +1,32 @@
+name: CD Pipeline
+
+on:
+  workflow_run:
+    workflows: ["CI Pipeline"]
+    types:
+      - completed
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Update Kubernetes manifests
+      run: |
+        sed -i "s|YOUR_DOCKERHUB_USERNAME/fastapi-app:latest|${{ secrets.DOCKERHUB_USERNAME }}/fastapi-app:${{ github.event.workflow_run.head_sha }}|g" k8s-manifests/deployment.yaml
+
+    - name: Commit and push changes
+      run: |
+        git config --global user.name 'GitHub Actions'
+        git config --global user.email 'actions@github.com'
+        git add k8s-manifests/deployment.yaml
+        git commit -m "Update image tag to ${{ github.event.workflow_run.head_sha }}" || echo "No changes to commit"
+        git push
+
+    - name: Notify Argo CD
+      run: |
+        echo "Argo CD will automatically detect changes and sync"
