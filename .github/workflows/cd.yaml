@@ -17,15 +17,17 @@ jobs:
 
     - name: Update Kubernetes manifests
       run: |
-        # Ensure the directory exists before running sed
-        if [ -d "k8s-manifests" ]; then
-          sed -i "s|YOUR_DOCKERHUB_USERNAME/fastapi-app:latest|${{ secrets.DOCKERHUB_USERNAME }}/fastapi-app:${{ github.event.workflow_run.head_sha }}|g" k8s-manifests/deployment.yaml
-          echo "Manifest updated successfully."
-        else
-          echo "Error: k8s-manifests directory not found!"
-          ls -la
-          exit 1
-        fi
+        # Use ls to verify path, then run sed directly
+        echo "Current directory contents:"
+        ls -la
+        
+        echo "Updating deployment.yaml..."
+        # Run sed directly - if path is wrong, it will fail with clear error
+        sed -i "s|YOUR_DOCKERHUB_USERNAME/fastapi-app:latest|${{ secrets.DOCKERHUB_USERNAME }}/fastapi-app:${{ github.event.workflow_run.head_sha }}|g" ./k8s-manifests/deployment.yaml
+        
+        echo "Verifying update..."
+        grep "image:" ./k8s-manifests/deployment.yaml
+        
     - name: Commit and push changes
       run: |
         git config --global user.name 'GitHub Actions'
