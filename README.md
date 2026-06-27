@@ -165,4 +165,142 @@ helm install monitoring prometheus-community/kube-prometheus-stack \
 4.  Push to the branch (`git push origin feature/amazing-feature`).
 5.  Open a Pull Request.
 ---
+## 🚨 Troubleshooting & Triage Log
+
+This section documents real-world issues encountered during development and their verified solutions. Use this as a first reference before opening an issue.
+
+### 1. ArgoCD Sync Status: "Unknown"
+**Symptom:** Application shows `Sync Status: Unknown` in ArgoCD UI/CLI despite valid Git configuration.
+**Root Cause:** ArgoCD controller lost connection to the Git repository or failed initial manifest parsing.
+**Triage Steps:**
+```bash
+# Force refresh application state
+argocd app get fastapi-app --refresh
+
+# Check controller logs for specific errors
+kubectl logs -n argocd deployment/argocd-application-controller | grep fastapi-app
+```
+**Fix:** Verify SSH keys/tokens are valid, ensure repo URL is accessible from cluster, and confirm manifests exist at the specified path.
+
+### 2. Minikube Memory Allocation Failure
+**Symptom:** `minikube start` fails with `RSRC_OVER_ALLOC_MEM: Requested memory allocation 8192MB is more than system limit`.
+**Root Cause:** Host machine has insufficient RAM for requested allocation (common on WSL/Linux dev machines).
+**Fix:** Reduce resource requests to match available capacity:
+```bash
+minikube start --memory=4096 --cpus=2 --driver=docker
+```
+> ⚠️ **Note:** Always verify host resources with `free -h` before starting minikube.
+
+### 3. Port Conflicts During Local Development
+**Symptom:** `port-forward` fails with `bind: address already in use` on port 8080.
+**Root Cause:** Docker proxy process (`docker-pr`) or another service occupies the default port.
+**Triage:**
+```bash
+# Identify conflicting process
+sudo lsof -i :8080
+
+# Alternative: Use non-standard port
+kubectl port-forward svc/argocd-server -n argocd 9090:443
+```
+
+### 4. FastAPI CrashLoopBackOff: ModuleNotFoundError
+**Symptom:** Pods crash immediately with `ModuleNotFoundError: No module named 'app'` despite successful image pull.
+**Root Cause:** Dockerfile CMD references `app.main:app` but project structure uses flat `main.py` without `app/` package wrapper.
+**Fix:** Update Dockerfile entrypoint to match actual file structure:
+```dockerfile
+# BEFORE (Incorrect)
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+# AFTER (Correct)
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+> 💡 **Pro Tip:** After fixing Dockerfile, force Kubernetes to pull new image: `kubectl rollout restart deployment fastapi-app`
+
+### 5. Ingress Returns 404 Despite Valid Configuration
+**Symptom:** `curl http://fastapi.local/health` returns nginx 404 error.
+**Root Cause:** NGINX Ingress Controller addon not enabled in minikube; ingress resource exists but no controller processes it.
+**Fix:**
+```bash
+minikube addons enable ingress
+kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=ingress-nginx -n ingress-nginx
+```
+Verify assignment: `kubectl get ingress fastapi-ingress` should show ADDRESS populated.
+
+### 6. Git Pull Conflict: Local Changes Overwritten
+**Symptom:** `git pull origin master` aborts with `Your local changes would be overwritten by merge`.
+**Root Cause:** Uncommitted local modifications (e.g., Dockerfile fix) conflict with remote updates.
+**Safe Resolution Workflow:**
+```bash
+# Preserve local work
+git stash
+
+# Get latest remote state
+git pull origin master
+
+# Reapply local changes
+git stash pop
+
+# Resolve conflicts if any, then commit
+git add . && git commit -m "Merge remote + local fixes"
+```
+
+### 7. Grafana Dashboard Import Failures
+**Symptom:** Dashboard ID `17905` fails to load or shows blank panels.
+**Root Causes:**
+-   Prometheus data source not selected during import
+-   ServiceMonitor labels don't match Prometheus scrape config
+-   Network restrictions block grafana.com API calls
+**Fixes:**
+-   Manually select `monitoring-prometheus` datasource in import screen
+-   Verify ServiceMonitor has label `release: monitoring` matching Helm release
+-   Download JSON manually from grafana.com and use "Upload dashboard JSON file" option
+
+### 8. ImagePullBackOff with Private Registry
+**Symptom:** Pods stuck in `ImagePullBackOff` despite valid Docker Hub credentials.
+**Root Cause:** Missing `imagePullSecrets` in deployment spec for private repositories.
+**Fix:**
+```bash
+# Create registry secret
+kubectl create secret docker-registry regcred \
+  --docker-server=docker.io \
+  --docker-username=<user> \
+  --docker-password=<token> \
+  -n default
+
+# Patch deployment
+kubectl patch deployment fastapi-app -n default \
+  -p '{"spec":{"template":{"spec":{"imagePullSecrets":[{"name":"regcred"}]}}}}'
+```
+
+### 9. Prometheus Not Scraping FastAPI Metrics
+**Symptom:** `/targets` page shows FastAPI endpoint as DOWN or missing entirely.
+**Triage Checklist:**
+-   ✅ Pod annotations present: `prometheus.io/scrape: "true"`, `prometheus.io/port: "8000"`
+-   ✅ `/api/metrics` endpoint returns valid Prometheus format (test via curl)
+-   ✅ ServiceMonitor selector matches pod labels exactly
+-   ✅ Prometheus operator has `serviceMonitorSelectorNilUsesHelmValues=false`
+
+### 10. ArgoCD CLI "Server Address Unspecified"
+**Symptom:** All `argocd` commands fail with fatal error about unspecified server.
+**Root Cause:** CLI context not configured after fresh install or minikube recreation.
+**Fix:**
+```bash
+argocd login localhost:9090 --username admin --insecure
+# Enter password from: kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
+```
+
+---
+
+### 🔍 General Debugging Commands Reference
+
+| Command | Purpose |
+|---------|---------|
+| `kubectl describe pod <name> -n <ns>` | Detailed pod events & conditions |
+| `kubectl logs <pod> --previous` | Logs from crashed container instance |
+| `argocd app get <name> -o yaml` | Full application spec & status |
+| `kubectl get events -n <ns> --sort-by=.lastTimestamp` | Chronological cluster events |
+| `helm list -n <ns>` | Verify Helm releases & versions |
+| `minikube ssh` | Direct access to minikube VM for network debugging |
+
+> 📌 **Best Practice:** Always check `kubectl describe pod` output FIRST when troubleshooting pod failures—it contains the most actionable error messages from kubelet, scheduler, and container runtime.
 *Built by [Avenaash](https://github.com/avenaash)*
