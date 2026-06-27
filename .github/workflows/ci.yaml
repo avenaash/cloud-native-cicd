@@ -25,7 +25,11 @@ jobs:
 
     - name: Run tests
       run: |
-        # Removed 'cd fastapi-app' - running tests from root
+        # List files to debug what's actually in the repo
+        echo "=== Files in tests/ ==="
+        ls -la tests/ || echo "tests/ directory not found!"
+        
+        # Run pytest with explicit discovery
         python -m pytest tests/ -v --tb=short
 
     - name: Lint code
