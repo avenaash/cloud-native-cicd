@@ -20,24 +20,26 @@ jobs:
 
     - name: Install dependencies
       run: |
-        cd fastapi-app
+        # Removed 'cd fastapi-app' - installing from root
         pip install -r requirements.txt
 
     - name: Run tests
       run: |
-        cd fastapi-app
+        # Removed 'cd fastapi-app' - running tests from root
         pytest tests/ -v --tb=short
 
     - name: Lint code
       run: |
-        cd fastapi-app
+        # Removed 'cd fastapi-app' - linting from root
         pip install flake8
-        flake8 app/ --count --select=E9,F63,F7,F82 --show-source --statistics
+        # Changed 'app/' to '.' since main.py is in root
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
 
   build:
     needs: test
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    # FIXED: Changed 'main' to 'master' to match your branch name
+    if: github.ref == 'refs/heads/master' 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -54,7 +56,8 @@ jobs:
     - name: Build and push Docker image
       uses: docker/build-push-action@v5
       with:
-        context: ./fastapi-app
+        # FIXED: Changed context to '.' (current directory)
+        context: . 
         push: true
         tags: |
           ${{ secrets.DOCKERHUB_USERNAME }}/fastapi-app:${{ github.sha }}
