@@ -32,7 +32,7 @@ jobs:
       run: |
         git config --global user.name 'GitHub Actions'
         git config --global user.email 'actions@github.com'
-        git add k8s-manifests/deployment.yaml
+        git add k8-manifests/deployment.yaml
         git commit -m "Update image tag to ${{ github.event.workflow_run.head_sha }}" || echo "No changes to commit"
         git push
 
